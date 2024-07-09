@@ -112,12 +112,12 @@ printIOException io_exception = do
 runMonitoredCommand :: Config -> Process.ProcessConfig () () () -> IO Process.ExitCode
 runMonitoredCommand config process_config = do
   let process_config_with_handles =
-        Process.setStdout Process.createPipe
-          $ Process.setStderr
+        Process.setStdout Process.createPipe $
+          Process.setStderr
             Process.createPipe
             process_config
-  Exception.handle ((ExitFailure 1 <$) . printIOException)
-    $ Process.withProcessWait process_config_with_handles \process -> do
+  Exception.handle ((ExitFailure 1 <$) . printIOException) $
+    Process.withProcessWait process_config_with_handles \process -> do
       void $ monitorHandle @NixJSONMessage config (Process.getStderr process)
       exitCode <- Process.waitExitCode process
       output <- ByteString.hGetContents (Process.getStdout process)
@@ -141,7 +141,7 @@ monitorHandle config input_handle = withParser @a \streamParser -> do
       first_state <- initalStateFromBuildPlatform current_system
       -- We enforce here, that the state type is completely strict so that we don‘t accumulate thunks while running the program.
       let first_process_state = MkProcessState (StrictType.Strict $ firstState @a first_state) (stateToText config first_state)
-      interact config streamParser (processStateUpdater @a config) (\now -> gfield @"updaterState" % nomState @a %~ maintainState now) (.printFunction) (finalizer config) (inputStream @a input_handle) outputHandle first_process_state
+      interact config streamParser (processStateUpdater @a config) (\now -> gfield @"updaterState" % nomState @a %~ maintainState now) (.printFunction) (finalizer config) input_handle outputHandle first_process_state
       `Exception.finally` do
         Terminal.hShowCursor outputHandle
         ByteString.hPut outputHandle "\n" -- We print a new line after finish, because in normal nom state the last line is not empty.
@@ -156,7 +156,7 @@ processStateUpdater ::
   StateT (ProcessState a) m ([NOMError], ByteString, Bool)
 processStateUpdater config input = do
   old_state <- get
-  updater_result <- updateState input (old_state.updaterState)
+  updater_result <- updateState input old_state.updaterState
   put
     MkProcessState
       { updaterState = updater_result.newState
